@@ -4,6 +4,7 @@ import { Pressable, StyleSheet } from 'react-native';
 import { T } from '@/components/ui';
 import { searchLocal } from '@/lib/basic-foods';
 import { searchOpenFoodFacts } from '@/lib/food-api';
+import { useFavorites } from '@/lib/favorites';
 import { Food } from '@/lib/macros';
 
 const TAGS: Partial<Record<Food['source'], string>> = { custom: 'propio', recipe: 'receta' };
@@ -38,15 +39,17 @@ export function useFoodSearch(query: string, own: Food[]) {
 export function FoodResults({
   search,
   onPick,
+  favorites,
 }: {
   search: ReturnType<typeof useFoodSearch>;
   onPick: (food: Food) => void;
+  favorites?: ReturnType<typeof useFavorites>;
 }) {
   if (!search.active) return null;
   return (
     <>
       {search.foods.map((f) => (
-        <FoodRow key={f.id} food={f} onPress={() => onPick(f)} />
+        <FoodRow key={f.id} food={f} onPress={() => onPick(f)} favorites={favorites} />
       ))}
       {search.loading ? (
         <T v="label" dim>
@@ -67,8 +70,18 @@ export function FoodResults({
   );
 }
 
-export function FoodRow({ food, onPress }: { food: Food; onPress: () => void }) {
+/** Fila de alimento. Con `favorites`, lleva una estrella para marcarlo o desmarcarlo con un toque. */
+export function FoodRow({
+  food,
+  onPress,
+  favorites,
+}: {
+  food: Food;
+  onPress: () => void;
+  favorites?: ReturnType<typeof useFavorites>;
+}) {
   const tag = TAGS[food.source];
+  const fav = favorites?.isFav(food);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.6 }]}>
       <T style={s.name} numberOfLines={2}>
@@ -83,6 +96,16 @@ export function FoodRow({ food, onPress }: { food: Food; onPress: () => void }) 
       <T v="label" dim>
         {Math.round(food.kcal100)} kcal/100g
       </T>
+      {favorites && (
+        <Pressable
+          onPress={() => favorites.toggle(food)}
+          hitSlop={10}
+          accessibilityLabel={fav ? `Quitar ${food.name} de favoritos` : `Añadir ${food.name} a favoritos`}>
+          <T v="h" dim={!fav}>
+            {fav ? '★' : '☆'}
+          </T>
+        </Pressable>
+      )}
     </Pressable>
   );
 }

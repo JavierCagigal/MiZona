@@ -1,21 +1,17 @@
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { BarcodeSheet } from '@/components/barcode-sheet';
 import { FoodResults, FoodRow, useFoodSearch } from '@/components/food-search';
+import { Editing, QuantitySheet } from '@/components/quantity-sheet';
 import { RecipeSheet } from '@/components/recipe-sheet';
-import { Button, Card, Field, Input, Screen, Segmented, Sheet, T } from '@/components/ui';
+import { Button, Card, Field, Input, Screen, Sheet, T } from '@/components/ui';
 import { Font, useColors } from '@/constants/theme';
 import { addDays, dayKey, fromKey } from '@/lib/dates';
+import { useFavorites } from '@/lib/favorites';
 import { Entry, Food, MEALS, Meal, scale, sumEntries, uid } from '@/lib/macros';
 import { load, save, useStored } from '@/lib/store';
-
-type Editing = { food: Food; entry?: Entry };
-
-function mealNow(): Meal {
-  const h = new Date().getHours();
-  return h < 11 ? 'Desayuno' : h < 16 ? 'Comida' : h < 20 ? 'Merienda' : 'Cena';
-}
 
 function dateLabel(key: string) {
   const today = dayKey();
@@ -39,7 +35,9 @@ export default function Comidas() {
   const [entries, setEntries] = useStored<Entry[]>(`log:${date}`, []);
   const [own, setOwn] = useStored<Food[]>('foods', []);
   const [recent, setRecent] = useStored<Food[]>('recent', []);
-  const [favs, setFavs] = useStored<Food[]>('favs', []);
+  const favorites = useFavorites();
+  const params = useLocalSearchParams<{ meal?: string }>();
+  const defaultMeal = MEALS.find((m) => m === params.meal);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
   const [sheet, setSheet] = useState<'custom' | 'recipe' | 'barcode' | null>(null);
@@ -57,10 +55,8 @@ export default function Comidas() {
     setRecent([food, ...recent.filter((f) => f.id !== food.id)].slice(0, 12));
     setEditing(null);
     setQuery('');
+    if (!id) flash(`Añadido a ${meal}${date === today ? '' : ` (${dateLabel(date)})`}: ${food.name}`);
   };
-
-  const toggleFav = (food: Food) =>
-    setFavs(favs.some((f) => f.id === food.id) ? favs.filter((f) => f.id !== food.id) : [food, ...favs]);
 
   const copyPreviousDay = async () => {
     const prev = await load<Entry[]>(`log:${addDays(date, -1)}`, []);
@@ -74,7 +70,7 @@ export default function Comidas() {
   };
 
   const totals = sumEntries(entries);
-  const recentOnly = recent.filter((r) => !favs.some((f) => f.id === r.id));
+  const recentOnly = recent.filter((r) => !favorites.isFav(r));
 
   return (
     <Screen>
@@ -100,12 +96,19 @@ export default function Comidas() {
           style={{ backgroundColor: c.card }}
         />
         {search.active ? (
-          <FoodResults search={search} onPick={(food) => setEditing({ food })} />
+          <FoodResults search={search} onPick={(food) => setEditing({ food })} favorites={favorites} />
         ) : (
           <>
-            {favs.length > 0 && <FoodGroup title="★ Favoritos" foods={favs} onPick={(food) => setEditing({ food })} />}
+            {favorites.favs.length > 0 && (
+              <FoodGroup title="★ Favoritos" foods={favorites.favs} onPick={(food) => setEditing({ food })} favorites={favorites} />
+            )}
             {recentOnly.length > 0 && (
-              <FoodGroup title="Recientes" foods={recentOnly} onPick={(food) => setEditing({ food })} />
+              <FoodGroup title="Recientes" foods={recentOnly} onPick={(food) => setEditing({ food })} favorites={favorites} />
+            )}
+            {favorites.favs.length === 0 && (
+              <T v="label" dim>
+                Toca ☆ en cualquier alimento para guardarlo en favoritos.
+              </T>
             )}
           </>
         )}
@@ -122,7 +125,14 @@ export default function Comidas() {
         </T>
       ) : null}
 
-      {entries.length === 0 ? (
+      {date === today && entries.length > 0 ? (
+        <Card>
+          <T dim>
+            Hoy llevas {totals.calories} kcal en {entries.length} {entries.length === 1 ? 'alimento' : 'alimentos'}.
+          </T>
+          <Button title="Ver mis comidas de hoy" kind="outline" onPress={() => router.navigate('/')} />
+        </Card>
+      ) : entries.length === 0 ? (
         <Card>
           <T dim style={s.center}>
             Nada registrado este día.
@@ -165,8 +175,9 @@ export default function Comidas() {
       {editing && (
         <QuantitySheet
           editing={editing}
-          fav={favs.some((f) => f.id === editing.food.id)}
-          onToggleFav={() => toggleFav(editing.food)}
+          defaultMeal={defaultMeal}
+          fav={favorites.isFav(editing.food)}
+          onToggleFav={() => favorites.toggle(editing.food)}
           onClose={() => setEditing(null)}
           onSave={(grams, meal) => saveEntry(editing.food, grams, meal, editing.entry?.id)}
           onDelete={() => {
@@ -210,14 +221,24 @@ export default function Comidas() {
   );
 }
 
-function FoodGroup({ title, foods, onPick }: { title: string; foods: Food[]; onPick: (f: Food) => void }) {
+function FoodGroup({
+  title,
+  foods,
+  onPick,
+  favorites,
+}: {
+  title: string;
+  foods: Food[];
+  onPick: (f: Food) => void;
+  favorites: ReturnType<typeof useFavorites>;
+}) {
   return (
     <View>
       <T v="label" dim>
         {title}
       </T>
       {foods.map((f) => (
-        <FoodRow key={f.id} food={f} onPress={() => onPick(f)} />
+        <FoodRow key={f.id} food={f} onPress={() => onPick(f)} favorites={favorites} />
       ))}
     </View>
   );
@@ -228,52 +249,6 @@ function Arrow({ label, a11y, onPress, disabled }: { label: string; a11y: string
     <Pressable onPress={onPress} disabled={disabled} accessibilityLabel={a11y} hitSlop={10} style={{ opacity: disabled ? 0.25 : 1 }}>
       <T v="h">{label}</T>
     </Pressable>
-  );
-}
-
-function QuantitySheet({
-  editing,
-  fav,
-  onToggleFav,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  editing: Editing;
-  fav: boolean;
-  onToggleFav: () => void;
-  onClose: () => void;
-  onSave: (grams: number, meal: Meal) => void;
-  onDelete: () => void;
-}) {
-  const [grams, setGrams] = useState(String(editing.entry?.grams ?? 100));
-  const [meal, setMeal] = useState<Meal>(editing.entry?.meal ?? mealNow());
-  const g = parseFloat(grams.replace(',', '.')) || 0;
-  const m = scale(editing.food, g);
-
-  return (
-    <Sheet visible onClose={onClose}>
-      <View style={s.header}>
-        <T v="h" style={s.flex}>
-          {editing.food.name}
-        </T>
-        <Pressable onPress={onToggleFav} hitSlop={10} accessibilityLabel={fav ? 'Quitar de favoritos' : 'Añadir a favoritos'}>
-          <T v="h">{fav ? '★' : '☆'}</T>
-        </Pressable>
-      </View>
-      <Field label="Cantidad (g)" value={grams} onChangeText={setGrams} keyboardType="decimal-pad" selectTextOnFocus />
-      <Segmented options={MEALS.map((x) => ({ id: x, label: x }))} value={meal} onChange={setMeal} />
-      <T v="label" dim>
-        {m.calories} kcal · {m.carbs}g carbos · {m.fat}g grasa · {m.protein}g prot
-      </T>
-      <Button
-        title={editing.entry ? 'Guardar cambios' : 'Añadir'}
-        onPress={() => {
-          if (g > 0) onSave(g, meal);
-        }}
-      />
-      {editing.entry && <Button title="Eliminar" kind="danger" onPress={onDelete} />}
-    </Sheet>
   );
 }
 

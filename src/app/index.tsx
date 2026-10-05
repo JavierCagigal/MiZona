@@ -4,10 +4,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { ProfileForm } from '@/components/profile-form';
+import { Editing, QuantitySheet } from '@/components/quantity-sheet';
 import { Bar, Button, Card, Field, Screen, Segmented, Sheet, T } from '@/components/ui';
 import { Font, useColors } from '@/constants/theme';
 import { DAY_NAMES, addDays, dayKey, fromKey, isoDayIndex, lastDays, streak } from '@/lib/dates';
-import { Entry, Profile, dailyGoals, scale, sumEntries, waterGoal } from '@/lib/macros';
+import { useFavorites } from '@/lib/favorites';
+import { Entry, MEALS, Profile, dailyGoals, scale, sumEntries, waterGoal } from '@/lib/macros';
 import { loadMany, useStored } from '@/lib/store';
 
 type DayPlan = { day: string; name: string; notes: string };
@@ -28,7 +30,9 @@ export default function Hoy() {
   const c = useColors();
   const today = dayKey();
   const [profile, setProfile, profileLoaded] = useStored<Profile | null>('profile', null);
-  const [entries] = useStored<Entry[]>(`log:${today}`, []);
+  const [entries, setEntries] = useStored<Entry[]>(`log:${today}`, []);
+  const favorites = useFavorites();
+  const [editing, setEditing] = useState<Editing | null>(null);
   const [weights, setWeights] = useStored<Record<string, number>>('weights', {});
   const [measures, setMeasures] = useStored<Measures>('measures', {});
   const [water, setWater] = useStored<Record<string, number>>('water', {});
@@ -83,22 +87,51 @@ export default function Hoy() {
           <Tile label="Grasa" value={totals.fat} goal={goals.fat} />
         </View>
 
-        {entries.length === 0 ? (
-          <T dim>Aún no has registrado nada hoy.</T>
-        ) : (
-          entries.map((e) => {
-            const m = scale(e.food, e.grams);
-            return (
-              <View key={e.id} style={s.entry}>
-                <T style={s.entryName}>{e.food.name}</T>
-                <T v="label" dim>
-                  {m.calories} kcal · {m.carbs}g carbos · {m.fat}g grasa · {m.protein}g prot
+        {MEALS.map((meal) => {
+          const items = entries.filter((e) => e.meal === meal);
+          if (meal === 'Otro' && items.length === 0) return null;
+          return (
+            <View key={meal} style={[s.meal, { borderTopColor: c.line }]}>
+              <View style={s.header}>
+                <T v="h" style={s.mealTitle}>
+                  {meal}
+                  {items.length > 0 && (
+                    <T v="label" dim>
+                      {'  '}
+                      {sumEntries(items).calories} kcal
+                    </T>
+                  )}
                 </T>
+                <Pressable
+                  onPress={() => router.navigate({ pathname: '/comidas', params: { meal } })}
+                  hitSlop={8}
+                  accessibilityLabel={`Añadir a ${meal}`}
+                  style={({ pressed }) => [s.add, { backgroundColor: c.bg }, pressed && { opacity: 0.6 }]}>
+                  <T v="h">+</T>
+                </Pressable>
               </View>
-            );
-          })
-        )}
-        <Button title="+ Añadir comida" kind="outline" onPress={() => router.navigate('/comidas')} />
+              {items.map((e) => {
+                const m = scale(e.food, e.grams);
+                return (
+                  <Pressable
+                    key={e.id}
+                    onPress={() => setEditing({ food: e.food, entry: e })}
+                    style={({ pressed }) => [s.entry, pressed && { opacity: 0.6 }]}>
+                    <T style={s.entryName}>
+                      {e.food.name}{' '}
+                      <T v="label" dim>
+                        {e.grams} g
+                      </T>
+                    </T>
+                    <T v="label" dim>
+                      {m.calories} kcal · {m.carbs}g carbos · {m.fat}g grasa · {m.protein}g prot
+                    </T>
+                  </Pressable>
+                );
+              })}
+            </View>
+          );
+        })}
       </Card>
 
       <View style={s.row}>
@@ -197,6 +230,22 @@ export default function Hoy() {
         Valores orientativos. No sustituyen el consejo de un profesional.
       </T>
 
+      {editing && (
+        <QuantitySheet
+          editing={editing}
+          fav={favorites.isFav(editing.food)}
+          onToggleFav={() => favorites.toggle(editing.food)}
+          onClose={() => setEditing(null)}
+          onSave={(grams, meal) => {
+            setEntries(entries.map((e) => (e.id === editing.entry?.id ? { ...e, grams, meal } : e)));
+            setEditing(null);
+          }}
+          onDelete={() => {
+            setEntries(entries.filter((e) => e.id !== editing.entry?.id));
+            setEditing(null);
+          }}
+        />
+      )}
       <BodySheet
         visible={weighing}
         initial={current}
@@ -434,7 +483,10 @@ const s = StyleSheet.create({
   pill: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tile: { flexGrow: 1, flexBasis: '22%', minWidth: 70, borderRadius: 16, padding: 10, gap: 3 },
-  entry: { gap: 2 },
+  entry: { gap: 2, paddingVertical: 2 },
+  meal: { gap: 6, borderTopWidth: 1, paddingTop: 10 },
+  mealTitle: { fontSize: 16, flex: 1 },
+  add: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   entryName: { fontFamily: Font.bold, fontSize: 14 },
   row: { flexDirection: 'row', gap: 12 },
   half: { flex: 1, minHeight: 210, justifyContent: 'space-between' },
