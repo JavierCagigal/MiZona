@@ -1,85 +1,44 @@
-# FitLog
+# AppNutri
 
-App personal de macros y entrenamientos. Es una web estática (sin build, sin
-Node, sin dependencias) que instalas en tu iPhone como PWA.
+App de nutrición y actividad: macros, comidas, peso, agua y tu semana de entrenos
+(carrera, bici, natación, fuerza…). Hecha con Expo, así que el mismo código sirve
+para iOS, Android y web.
 
-## Qué incluye
+De momento todo se guarda en el propio dispositivo: no hay cuenta ni servidor.
+Las cuentas y la sincronización llegan en la fase 2.
 
-- **Hoy**: resumen de macros del día vs tu objetivo, y el entreno programado.
-- **Comidas**: busca alimentos en Open Food Facts (base pública gratuita),
-  crea tus propios alimentos frecuentes (se guardan en el teléfono), y
-  registra cantidades por comida (desayuno/comida/merienda/cena).
-- **Entrenos**: plantilla semanal simple (día + nombre + notas), se repite
-  cada semana.
-- **Ajustes**: tus datos (peso, altura, edad, sexo, actividad, objetivo) →
-  calcula calorías y macros automáticamente (fórmula Mifflin-St Jeor), y
-  puedes ajustarlos a mano si quieres afinar.
+## Probarla
 
-Todos tus datos se guardan **solo en tu iPhone** (localStorage del
-navegador). No hay servidor, no hay cuenta, no se envía nada a ningún sitio
-excepto la búsqueda de alimentos a Open Food Facts.
-
-## Desplegar (elige uno, los tres son gratis)
-
-### Vercel
-1. Crea un repo nuevo en GitHub y sube esta carpeta (o usa `vercel` CLI
-   directamente sobre la carpeta).
-2. En vercel.com → "Add New Project" → importa el repo.
-3. Framework preset: **Other** (no hay build). Build command: vacío. Output
-   directory: `.` (la raíz).
-4. Deploy. Te da una URL tipo `fitlog-tuusuario.vercel.app`.
-
-### Netlify
-1. netlify.com → "Add new site" → "Deploy manually" → arrastra esta carpeta
-   completa (o conecta el repo de GitHub).
-2. No hace falta build command ni carpeta de publicación especial (deja la
-   raíz).
-
-### GitHub Pages
-1. Sube esta carpeta a un repo de GitHub.
-2. Settings → Pages → Deploy from branch → rama `main`, carpeta `/root`.
-3. Te da una URL tipo `tuusuario.github.io/fitlog`.
-
-## Instalar en el iPhone
-
-1. Abre la URL desplegada en **Safari** (tiene que ser Safari, no Chrome).
-2. Toca el icono de compartir (el cuadrado con la flecha hacia arriba).
-3. "Añadir a pantalla de inicio".
-4. Listo: te queda un icono como cualquier app, se abre a pantalla completa
-   y funciona sin conexión (excepto la búsqueda de alimentos nuevos, que
-   necesita internet).
-
-## Sobre Garmin Connect
-
-De momento no está incluido (lo dejamos para más adelante, como acordamos).
-Cuando quieras retomarlo, las dos vías realistas son:
-- Programa oficial de desarrolladores de Garmin (requiere solicitud y
-  aprobación, pensado para empresas/partners).
-- Librería no oficial que emula el login de la app — funciona, pero
-  necesita un servidor propio (esto ya no es una web estática) y guardar tus
-  credenciales de Garmin ahí.
-
-## Estructura del proyecto
-
-```
-index.html          Punto de entrada
-styles.css           Estilos (una sola hoja, con variables de color)
-manifest.json        Configuración de la PWA (icono, nombre, colores)
-sw.js                Service worker (cache offline del "shell" de la app)
-icons/               Iconos de la app
-js/
-  app.js             Navegación entre pestañas
-  storage.js         Lectura/escritura en localStorage
-  macros.js          Cálculo de TMB/TDEE/objetivos de macros
-  foodApi.js         Búsqueda en Open Food Facts
-  state.js           Helpers de estado compartido
-  views/
-    today.js         Pestaña "Hoy"
-    comidas.js        Pestaña "Comidas"
-    entrenos.js       Pestaña "Entrenos"
-    ajustes.js        Pestaña "Ajustes"
+```bash
+npm install
+npx expo start
 ```
 
-No hay build ni dependencias que instalar — es HTML/CSS/JS puro con módulos
-ES nativos del navegador, así que cualquiera de los tres despliegues de
-arriba funciona subiendo la carpeta tal cual.
+- **En tu iPhone:** instala **Expo Go** desde la App Store y escanea el QR que
+  aparece en la terminal (el móvil y el Mac tienen que estar en la misma wifi).
+- **En el navegador:** pulsa `w` en la terminal.
+
+## Comprobaciones
+
+```bash
+npm run check      # lógica de macros y fechas
+npx tsc --noEmit   # tipos
+npx expo lint      # estilo
+```
+
+## Estructura
+
+```
+src/app/          pantallas: index (Hoy), comidas, actividad, ajustes (Perfil)
+src/components/   barra de pestañas y piezas de interfaz (tarjetas, botones, hojas)
+src/lib/          macros, fechas, guardado local y búsqueda en Open Food Facts
+src/constants/    colores (modo claro y oscuro) y tipografía
+```
+
+## Fases
+
+1. **Mejorar la app** (ahora): rediseño y funciones sin servidor.
+2. **Producción:** cuentas, nube, Apple Health, escáner, foto con IA y App Store.
+3. **Crecer:** parte social y suscripción.
+
+La versión anterior (la PWA en JavaScript puro) sigue en la rama `main`.
