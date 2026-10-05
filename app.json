@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "AppNutri",
-    "slug": "appnutri",
+    "name": "MiZona",
+    "slug": "mizona",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "appnutri",
+    "scheme": "mizona",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"

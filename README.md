@@ -1,4 +1,4 @@
-# AppNutri
+# MiZona
 
 App de nutrición y actividad: macros, comidas, peso, agua y tu semana de entrenos
 (carrera, bici, natación, fuerza…). Hecha con Expo, así que el mismo código sirve
