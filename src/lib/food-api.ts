@@ -39,3 +39,23 @@ export async function searchOpenFoodFacts(query: string): Promise<Food[] | null>
 function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
+
+/** Producto por código de barras. null = no está en Open Food Facts (o le faltan las calorías). Lanza si no hay red. */
+export async function lookupBarcode(code: string): Promise<Food | null> {
+  const res = await fetch(
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}?fields=code,product_name,brands,nutriments`
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Open Food Facts respondió ${res.status}`);
+  const p = (await res.json()).product;
+  if (!p?.product_name || p.nutriments?.['energy-kcal_100g'] == null) return null;
+  return {
+    id: `off_${p.code ?? code}`,
+    source: 'off',
+    name: p.brands ? `${p.product_name} (${p.brands})` : p.product_name,
+    kcal100: round1(p.nutriments['energy-kcal_100g']),
+    protein100: round1(p.nutriments.proteins_100g ?? 0),
+    carbs100: round1(p.nutriments.carbohydrates_100g ?? 0),
+    fat100: round1(p.nutriments.fat_100g ?? 0),
+  };
+}

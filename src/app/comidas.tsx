@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { BarcodeSheet } from '@/components/barcode-sheet';
 import { FoodResults, FoodRow, useFoodSearch } from '@/components/food-search';
 import { RecipeSheet } from '@/components/recipe-sheet';
 import { Button, Card, Field, Input, Screen, Segmented, Sheet, T } from '@/components/ui';
@@ -41,7 +42,7 @@ export default function Comidas() {
   const [favs, setFavs] = useStored<Food[]>('favs', []);
   const [query, setQuery] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [sheet, setSheet] = useState<'custom' | 'recipe' | null>(null);
+  const [sheet, setSheet] = useState<'custom' | 'recipe' | 'barcode' | null>(null);
   const [notice, setNotice] = useState('');
   const search = useFoodSearch(query, own);
 
@@ -108,6 +109,7 @@ export default function Comidas() {
             )}
           </>
         )}
+        <Button title="Escanear código de barras" onPress={() => setSheet('barcode')} />
         <View style={s.actions}>
           <Button title="+ Alimento propio" kind="outline" small style={s.flex} onPress={() => setSheet('custom')} />
           <Button title="+ Plato con ingredientes" kind="outline" small style={s.flex} onPress={() => setSheet('recipe')} />
@@ -181,6 +183,16 @@ export default function Comidas() {
             setSheet(null);
             setEditing({ food });
           }}
+        />
+      )}
+      {sheet === 'barcode' && (
+        <BarcodeSheet
+          onClose={() => setSheet(null)}
+          onFound={(food) => {
+            setSheet(null);
+            setEditing({ food });
+          }}
+          onCreate={() => setSheet('custom')}
         />
       )}
       {sheet === 'recipe' && (
