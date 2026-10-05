@@ -33,7 +33,7 @@ export type Profile = {
 
 export type Food = {
   id: string;
-  source: 'off' | 'custom';
+  source: 'basic' | 'off' | 'custom' | 'recipe';
   name: string;
   kcal100: number;
   protein100: number;
@@ -98,7 +98,7 @@ export function scale(food: Food, grams: number): Macros {
   };
 }
 
-export function sumEntries(entries: Entry[]): Macros {
+export function sumEntries(entries: Pick<Entry, 'food' | 'grams'>[]): Macros {
   return entries.reduce(
     (acc, e) => {
       const m = scale(e.food, e.grams);
@@ -110,6 +110,22 @@ export function sumEntries(entries: Entry[]): Macros {
     },
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
+}
+
+/**
+ * Valores por 100 g de un plato a partir de sus ingredientes.
+ * Si se indica el peso final (tras cocinar), se reparte sobre ese peso; si no, sobre la suma de ingredientes.
+ */
+export function recipePer100(items: Pick<Entry, 'food' | 'grams'>[], cookedGrams?: number) {
+  const total = sumEntries(items);
+  const weight = cookedGrams || items.reduce((n, i) => n + i.grams, 0);
+  const per100 = (v: number) => (weight > 0 ? Math.round((v * 1000) / weight) / 10 : 0);
+  return {
+    kcal100: per100(total.calories),
+    protein100: per100(total.protein),
+    carbs100: per100(total.carbs),
+    fat100: per100(total.fat),
+  };
 }
 
 /** ~35 ml por kg de peso, redondeado a vasos de 250 ml. */

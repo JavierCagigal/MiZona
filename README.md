@@ -5,7 +5,14 @@ App de nutrición y actividad: macros, comidas, peso, agua y tu semana de entren
 para iOS, Android y web.
 
 De momento todo se guarda en el propio dispositivo: no hay cuenta ni servidor.
-Las cuentas y la sincronización llegan en la fase 2.
+Para no perder datos, en **Perfil → Copia de seguridad** se exporta todo como texto
+y se restaura pegándolo. Las cuentas y la sincronización llegan en la fase 2.
+
+## Antes de lanzar
+
+- `src/lib/basic-foods.ts`: los ~100 alimentos básicos son valores de referencia
+  aproximados. Cotejarlos con [BEDCA](https://www.bedca.net) y citar la fuente.
+- Icono y pantalla de carga propios (ahora son los de Expo).
 
 ## Probarla
 

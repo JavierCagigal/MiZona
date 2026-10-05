@@ -29,12 +29,12 @@ export function save(key: string, value: unknown) {
 
 /** Estado persistido que se recarga cada vez que la pantalla gana el foco. */
 export function useStored<T>(key: string, fallback: T) {
-  const [state, setState] = useState({ key: '', value: fallback });
+  const [state, setState] = useState({ key: '', value: fallback, loads: 0 });
 
   useFocusEffect(
     useCallback(() => {
       let alive = true;
-      load(key, fallback).then((value) => alive && setState({ key, value }));
+      load(key, fallback).then((value) => alive && setState((s) => ({ key, value, loads: s.loads + 1 })));
       return () => {
         alive = false;
       };
@@ -45,8 +45,9 @@ export function useStored<T>(key: string, fallback: T) {
   const loaded = state.key === key;
   const value = loaded ? state.value : fallback;
   const set = (v: T) => {
-    setState({ key, value: v });
+    setState((s) => ({ ...s, key, value: v }));
     save(key, v);
   };
-  return [value, set, loaded] as const;
+  // `loads` cambia cada vez que se relee del disco: sirve de `key` para formularios que copian el valor.
+  return [value, set, loaded, state.loads] as const;
 }

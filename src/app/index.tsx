@@ -3,14 +3,26 @@ import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { Bar, Button, Card, Field, Screen, Sheet, T } from '@/components/ui';
+import { ProfileForm } from '@/components/profile-form';
+import { Bar, Button, Card, Field, Screen, Segmented, Sheet, T } from '@/components/ui';
 import { Font, useColors } from '@/constants/theme';
-import { DAY_NAMES, addDays, dayKey, isoDayIndex, lastDays, streak } from '@/lib/dates';
+import { DAY_NAMES, addDays, dayKey, fromKey, isoDayIndex, lastDays, streak } from '@/lib/dates';
 import { Entry, Profile, dailyGoals, scale, sumEntries, waterGoal } from '@/lib/macros';
 import { loadMany, useStored } from '@/lib/store';
 
 type DayPlan = { day: string; name: string; notes: string };
 const GLASS = 250;
+const MEASURES = [
+  { id: 'cintura', label: 'Cintura' },
+  { id: 'cadera', label: 'Cadera' },
+  { id: 'pecho', label: 'Pecho' },
+  { id: 'brazo', label: 'Brazo' },
+  { id: 'muslo', label: 'Muslo' },
+] as const;
+type MeasureId = (typeof MEASURES)[number]['id'];
+type Measures = Record<string, Partial<Record<MeasureId, number>>>;
+
+const liters = (ml: number) => `${+(ml / 1000).toFixed(2)}L`;
 
 export default function Hoy() {
   const c = useColors();
@@ -18,28 +30,19 @@ export default function Hoy() {
   const [profile, setProfile, profileLoaded] = useStored<Profile | null>('profile', null);
   const [entries] = useStored<Entry[]>(`log:${today}`, []);
   const [weights, setWeights] = useStored<Record<string, number>>('weights', {});
+  const [measures, setMeasures] = useStored<Measures>('measures', {});
   const [water, setWater] = useStored<Record<string, number>>('water', {});
   const [week] = useStored<DayPlan[] | null>('week', null);
   const [done, setDone] = useStored(`done:${today}`, false);
   const { days, weekDone } = useHistory(today);
   const [weighing, setWeighing] = useState(false);
+  const [waterView, setWaterView] = useState<'hoy' | 'semana' | 'mes'>('hoy');
 
   const weekKeys = lastDays(7, addDays(today, 6 - isoDayIndex()));
 
   if (!profileLoaded) return <Screen>{null}</Screen>;
 
-  if (!profile) {
-    return (
-      <Screen>
-        <T v="title">Hoy</T>
-        <Card bg={c.profile}>
-          <T v="h">Empieza por tu perfil</T>
-          <T>Con tu peso, altura y objetivo calculo tus calorías y macros de cada día.</T>
-          <Button title="Configurar perfil" onPress={() => router.navigate('/ajustes')} />
-        </Card>
-      </Screen>
-    );
-  }
+  if (!profile) return <Welcome onDone={setProfile} />;
 
   const goals = dailyGoals(profile);
   const totals = sumEntries(entries);
@@ -54,9 +57,10 @@ export default function Hoy() {
   const addWater = (delta: number) => setWater({ ...water, [today]: Math.max(0, ml + delta) });
 
   const plan = week?.[isoDayIndex()];
-  const saveWeight = (kg: number) => {
+  const saveBody = (kg: number, m: Partial<Record<MeasureId, number>>) => {
     setWeights({ ...weights, [today]: kg });
     setProfile({ ...profile, weight: kg });
+    if (Object.keys(m).length) setMeasures({ ...measures, [today]: { ...measures[today], ...m } });
     setWeighing(false);
   };
 
@@ -104,7 +108,7 @@ export default function Hoy() {
             <Spark values={series} color={c.weightInk} />
           ) : (
             <T v="label" dim style={s.hint}>
-              Toca para registrar tu peso
+              Toca para apuntar tu peso y tus medidas
             </T>
           )}
           <View style={s.stats}>
@@ -158,27 +162,48 @@ export default function Hoy() {
             <Round label="+" onPress={() => addWater(GLASS)} />
           </View>
         </View>
-        <View style={s.glasses}>
-          {Array.from({ length: Math.max(mlGoal, ml) / GLASS }, (_, i) => (
-            <View
-              key={i}
-              style={[s.glass, { borderColor: c.waterInk }, i < ml / GLASS && { backgroundColor: c.waterInk }]}
-            />
-          ))}
-        </View>
-        <View style={s.waterFoot}>
-          <T v="label" dim>
-            {Math.round((ml / mlGoal) * 100)}% de {mlGoal / 1000} L
-          </T>
-          <T v="big">{(ml / 1000).toFixed(2).replace(/0$/, '')}L</T>
-        </View>
+        {waterView === 'hoy' ? (
+          <>
+            <View style={s.glasses}>
+              {Array.from({ length: Math.max(mlGoal, ml) / GLASS }, (_, i) => (
+                <View
+                  key={i}
+                  style={[s.glass, { borderColor: c.waterInk }, i < ml / GLASS && { backgroundColor: c.waterInk }]}
+                />
+              ))}
+            </View>
+            <View style={s.waterFoot}>
+              <T v="label" dim>
+                {Math.round((ml / mlGoal) * 100)}% de {mlGoal / 1000} L
+              </T>
+              <T v="big">{liters(ml)}</T>
+            </View>
+          </>
+        ) : (
+          <WaterHistory days={lastDays(waterView === 'semana' ? 7 : 30, today)} water={water} goal={mlGoal} />
+        )}
+        <Segmented
+          options={[
+            { id: 'hoy', label: 'Hoy' },
+            { id: 'semana', label: 'Semana' },
+            { id: 'mes', label: 'Mes' },
+          ]}
+          value={waterView}
+          onChange={setWaterView}
+        />
       </Card>
 
       <T v="label" dim style={s.note}>
         Valores orientativos. No sustituyen el consejo de un profesional.
       </T>
 
-      <WeightSheet visible={weighing} initial={current} onClose={() => setWeighing(false)} onSave={saveWeight} />
+      <BodySheet
+        visible={weighing}
+        initial={current}
+        measures={measures}
+        onClose={() => setWeighing(false)}
+        onSave={saveBody}
+      />
     </Screen>
   );
 }
@@ -260,39 +285,147 @@ function Spark({ values, color }: { values: number[]; color: string }) {
   );
 }
 
-function WeightSheet({
+function BodySheet({
   visible,
   initial,
+  measures,
   onClose,
   onSave,
 }: {
   visible: boolean;
   initial: number;
+  measures: Measures;
   onClose: () => void;
-  onSave: (kg: number) => void;
+  onSave: (kg: number, m: Partial<Record<MeasureId, number>>) => void;
 }) {
   const [text, setText] = useState('');
+  const [m, setM] = useState<Partial<Record<MeasureId, string>>>({});
   const kg = parseFloat((text || String(initial)).replace(',', '.'));
+  const dates = Object.keys(measures).sort();
+
+  const trend = (id: MeasureId) => {
+    const values = dates.map((d) => measures[d][id]).filter((v): v is number => v != null);
+    if (values.length === 0) return '';
+    const diff = values.at(-1)! - values[0];
+    return ` · última ${values.at(-1)}${values.length > 1 ? ` (${diff > 0 ? '+' : ''}${+diff.toFixed(1)})` : ''}`;
+  };
+
+  const submit = () => {
+    if (!(kg > 0 && kg < 400)) return;
+    const parsed = Object.fromEntries(
+      Object.entries(m)
+        .map(([k, v]) => [k, parseFloat((v ?? '').replace(',', '.'))])
+        .filter(([, v]) => (v as number) > 0)
+    );
+    onSave(kg, parsed);
+    setText('');
+    setM({});
+  };
+
   return (
     <Sheet visible={visible} onClose={onClose}>
-      <T v="h">Peso de hoy</T>
-      <Field
-        label="Kilos"
-        value={text}
-        onChangeText={setText}
-        placeholder={initial.toFixed(1)}
-        keyboardType="decimal-pad"
-        autoFocus
-      />
-      <Button
-        title="Guardar"
-        onPress={() => {
-          if (!(kg > 0 && kg < 400)) return;
-          onSave(kg);
-          setText('');
-        }}
-      />
+      <T v="h">Peso y medidas de hoy</T>
+      <Field label="Peso (kg)" value={text} onChangeText={setText} placeholder={initial.toFixed(1)} keyboardType="decimal-pad" />
+      <T v="label" dim>
+        Medidas en cm (opcional). Mídete siempre en el mismo sitio y a la misma hora.
+      </T>
+      <View style={s.measures}>
+        {MEASURES.map((x) => (
+          <View key={x.id} style={s.measure}>
+            <Field
+              label={`${x.label}${trend(x.id)}`}
+              value={m[x.id] ?? ''}
+              onChangeText={(v) => setM({ ...m, [x.id]: v })}
+              keyboardType="decimal-pad"
+            />
+          </View>
+        ))}
+      </View>
+      <Button title="Guardar" onPress={submit} />
     </Sheet>
+  );
+}
+
+/** Barras de agua por día; llenas si se llegó al objetivo. */
+function WaterHistory({ days, water, goal }: { days: string[]; water: Record<string, number>; goal: number }) {
+  const c = useColors();
+  const values = days.map((d) => water[d] ?? 0);
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const hits = values.filter((v) => v >= goal).length;
+  const week = days.length <= 7;
+  return (
+    <>
+      <View style={s.bars}>
+        {days.map((d, i) => (
+          <View key={d} style={s.barCol}>
+            <View style={s.barTrack}>
+              <View
+                style={[
+                  s.barFill,
+                  {
+                    height: `${Math.min(100, (values[i] / goal) * 100)}%`,
+                    backgroundColor: c.waterInk,
+                    opacity: values[i] >= goal ? 1 : 0.45,
+                  },
+                ]}
+              />
+            </View>
+            {week && (
+              <T v="label" dim>
+                {DAY_NAMES[isoDayIndex(fromKey(d))][0]}
+              </T>
+            )}
+          </View>
+        ))}
+      </View>
+      <View style={s.waterFoot}>
+        <T v="label" dim>
+          Objetivo cumplido {hits} de {days.length} días
+        </T>
+        <View style={{ alignItems: 'flex-end' }}>
+          <T v="big">{liters(avg)}</T>
+          <T v="label" dim>
+            media al día
+          </T>
+        </View>
+      </View>
+    </>
+  );
+}
+
+/** Primera vez: qué es MiZona y, después, el perfil. */
+function Welcome({ onDone }: { onDone: (p: Profile) => void }) {
+  const c = useColors();
+  const [step, setStep] = useState(0);
+
+  if (step === 1) {
+    return (
+      <Screen>
+        <T v="title">Cuéntame de ti</T>
+        <T dim>Con esto calculo tus calorías y macros. Puedes cambiarlo cuando quieras en Perfil.</T>
+        <ProfileForm initial={null} onSave={onDone} />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <T v="title">MiZona</T>
+      <T dim>Tu comida, tu deporte y tu progreso, en un mismo sitio.</T>
+      <Card bg={c.food}>
+        <T v="h">Come</T>
+        <T>Apunta lo que comes en segundos: básicos, productos de marca o tus propios platos.</T>
+      </Card>
+      <Card bg={c.activity}>
+        <T v="h">Muévete</T>
+        <T>Corre, nada, pedalea o levanta. Registra tus sesiones y bate tus récords.</T>
+      </Card>
+      <Card bg={c.water}>
+        <T v="h">Mide</T>
+        <T>Peso, medidas y agua, con gráficas para ver cómo avanzas.</T>
+      </Card>
+      <Button title="Empezar" onPress={() => setStep(1)} />
+    </Screen>
   );
 }
 
@@ -317,4 +450,10 @@ const s = StyleSheet.create({
   waterFoot: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   round: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   note: { textAlign: 'center', fontSize: 10 },
+  measures: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  measure: { flexGrow: 1, flexBasis: '45%' },
+  bars: { flexDirection: 'row', gap: 4, height: 96, alignItems: 'flex-end' },
+  barCol: { flex: 1, alignItems: 'center', gap: 4, height: '100%' },
+  barTrack: { flex: 1, width: '100%', justifyContent: 'flex-end' },
+  barFill: { width: '100%', borderRadius: 4, minHeight: 2 },
 });

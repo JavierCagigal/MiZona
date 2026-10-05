@@ -1,19 +1,35 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Share } from 'react-native';
 
-import { Button, Card, Field, Screen, Segmented, T } from '@/components/ui';
+import { ProfileForm } from '@/components/profile-form';
+import { Button, Card, Input, Screen, Sheet, T } from '@/components/ui';
 import { useColors } from '@/constants/theme';
-import { ACTIVITY_LEVELS, Activity, GOALS, Goal, Macros, Profile, calcGoals } from '@/lib/macros';
+import { exportAll, importAll } from '@/lib/backup';
+import { Profile } from '@/lib/macros';
 import { useStored } from '@/lib/store';
 
 export default function Ajustes() {
-  const [profile, setProfile, loaded] = useStored<Profile | null>('profile', null);
+  const c = useColors();
+  const [profile, setProfile, loaded, loads] = useStored<Profile | null>('profile', null);
+  const [sheet, setSheet] = useState<{ mode: 'export' | 'import'; text: string } | null>(null);
+
+  const exportBackup = async () => {
+    const text = await exportAll();
+    try {
+      await Share.share({ title: 'Copia de MiZona', message: text });
+    } catch {
+      // Sin hoja de compartir (p. ej. navegador de escritorio): se muestra el texto para copiarlo a mano.
+      setSheet({ mode: 'export', text });
+    }
+  };
+
   return (
     <Screen>
       <T v="title">Perfil</T>
       {loaded && (
         <ProfileForm
+          key={loads}
           initial={profile}
           onSave={(p) => {
             setProfile(p);
@@ -21,119 +37,68 @@ export default function Ajustes() {
           }}
         />
       )}
+
+      <Card bg={c.water}>
+        <T v="h">Copia de seguridad</T>
+        <T v="label" dim>
+          Tus datos solo están en este dispositivo. Exporta una copia de vez en cuando (a Notas, Archivos o tu correo) y
+          restáurala si cambias de móvil.
+        </T>
+        <Button title="Exportar copia" onPress={exportBackup} />
+        <Button title="Restaurar copia" kind="outline" onPress={() => setSheet({ mode: 'import', text: '' })} />
+      </Card>
+
+      {sheet && <BackupSheet {...sheet} onClose={() => setSheet(null)} />}
     </Screen>
   );
 }
 
-const MACRO_FIELDS: { key: keyof Macros; label: string }[] = [
-  { key: 'calories', label: 'Calorías (kcal)' },
-  { key: 'protein', label: 'Proteína (g)' },
-  { key: 'carbs', label: 'Carbohidratos (g)' },
-  { key: 'fat', label: 'Grasas (g)' },
-];
-
-function ProfileForm({ initial, onSave }: { initial: Profile | null; onSave: (p: Profile) => void }) {
+function BackupSheet({ mode, text, onClose }: { mode: 'export' | 'import'; text: string; onClose: () => void }) {
   const c = useColors();
-  const [weight, setWeight] = useState(initial ? String(initial.weight) : '');
-  const [height, setHeight] = useState(initial ? String(initial.height) : '');
-  const [age, setAge] = useState(initial ? String(initial.age) : '');
-  const [sex, setSex] = useState<Profile['sex']>(initial?.sex ?? 'hombre');
-  const [activity, setActivity] = useState<Activity>(initial?.activity ?? 'moderado');
-  const [goalType, setGoalType] = useState<Goal>(initial?.goalType ?? 'mantener');
-  const [overrides, setOverrides] = useState<Record<keyof Macros, string>>({
-    calories: String(initial?.overrides?.calories ?? ''),
-    protein: String(initial?.overrides?.protein ?? ''),
-    carbs: String(initial?.overrides?.carbs ?? ''),
-    fat: String(initial?.overrides?.fat ?? ''),
-  });
-  const [saved, setSaved] = useState(false);
+  const [value, setValue] = useState(text);
+  const [confirming, setConfirming] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const num = (v: string) => parseFloat(v.replace(',', '.')) || 0;
-  const base = { weight: num(weight), height: num(height), age: num(age), sex, activity, goalType };
-  const valid = base.weight > 0 && base.height > 0 && base.age > 0;
-  const goals = valid ? calcGoals(base) : null;
-  const level = ACTIVITY_LEVELS.find((a) => a.id === activity);
-
-  const save = () => {
-    if (!valid) return;
-    const manual = Object.fromEntries(
-      Object.entries(overrides)
-        .filter(([, v]) => num(v) > 0)
-        .map(([k, v]) => [k, num(v)])
-    );
-    onSave({ ...base, overrides: Object.keys(manual).length ? manual : null });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+  const restore = async () => {
+    if (!confirming) return setConfirming(true);
+    try {
+      const n = await importAll(value);
+      setMessage({ ok: true, text: `Copia restaurada (${n} datos).` });
+      setTimeout(() => {
+        onClose();
+        router.navigate('/');
+      }, 1200);
+    } catch (e) {
+      setConfirming(false);
+      setMessage({ ok: false, text: (e as Error).message });
+    }
   };
 
   return (
-    <>
-      <Card>
-        <T v="h">Tus datos</T>
-        <View style={s.grid}>
-          <View style={s.cell}>
-            <Field label="Peso (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" placeholder="75" />
-          </View>
-          <View style={s.cell}>
-            <Field label="Altura (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad" placeholder="178" />
-          </View>
-          <View style={s.cell}>
-            <Field label="Edad" value={age} onChangeText={setAge} keyboardType="number-pad" placeholder="28" />
-          </View>
-        </View>
-        <T v="label" dim>
-          Sexo
+    <Sheet visible onClose={onClose}>
+      <T v="h">{mode === 'export' ? 'Tu copia' : 'Restaurar copia'}</T>
+      <T v="label" dim>
+        {mode === 'export'
+          ? 'Selecciona todo el texto, cópialo y guárdalo donde quieras.'
+          : 'Pega el texto completo de tu copia. Se sustituirán los datos que contenga; lo demás no se toca.'}
+      </T>
+      <Input
+        value={value}
+        onChangeText={setValue}
+        editable={mode === 'import'}
+        multiline
+        selectTextOnFocus={mode === 'export'}
+        placeholder='{"app":"mizona", …}'
+        style={{ minHeight: 160, maxHeight: 260, fontSize: 12 }}
+      />
+      {message && (
+        <T v="label" style={{ color: message.ok ? c.activityInk : c.danger }}>
+          {message.text}
         </T>
-        <Segmented
-          options={[
-            { id: 'hombre', label: 'Hombre' },
-            { id: 'mujer', label: 'Mujer' },
-          ]}
-          value={sex}
-          onChange={setSex}
-        />
-        <T v="label" dim>
-          Actividad · {level?.hint}
-        </T>
-        <Segmented options={ACTIVITY_LEVELS} value={activity} onChange={setActivity} />
-        <T v="label" dim>
-          Objetivo
-        </T>
-        <Segmented options={GOALS} value={goalType} onChange={setGoalType} />
-      </Card>
-
-      {goals ? (
-        <Card bg={c.profile}>
-          <T v="h">Tu objetivo diario</T>
-          <View style={s.grid}>
-            {MACRO_FIELDS.map((f) => (
-              <View key={f.key} style={s.cell}>
-                <Field
-                  label={f.label}
-                  value={overrides[f.key]}
-                  onChangeText={(v) => setOverrides({ ...overrides, [f.key]: v })}
-                  placeholder={String(goals[f.key])}
-                  keyboardType="number-pad"
-                  style={{ backgroundColor: c.card }}
-                />
-              </View>
-            ))}
-          </View>
-          <T v="label" dim>
-            Calculado con tus datos (gasto estimado {goals.tdee} kcal/día). Escribe un número solo si quieres
-            cambiarlo.
-          </T>
-        </Card>
-      ) : (
-        <T dim>Rellena peso, altura y edad para calcular tu objetivo.</T>
       )}
-
-      <Button title={saved ? 'Guardado ✓' : 'Guardar'} onPress={save} style={!valid && { opacity: 0.4 }} />
-    </>
+      {mode === 'import' && (
+        <Button title={confirming ? 'Toca otra vez para confirmar' : 'Restaurar'} kind={confirming ? 'danger' : 'solid'} onPress={restore} />
+      )}
+    </Sheet>
   );
 }
-
-const s = StyleSheet.create({
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  cell: { flexGrow: 1, flexBasis: '30%', minWidth: 120 },
-});

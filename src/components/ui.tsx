@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { Children, ReactNode, useEffect } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -14,10 +14,12 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Font, useColors } from '@/constants/theme';
 
+/** Pantalla con scroll. Cada bloque entra con un pequeño fundido escalonado (respeta "Reducir movimiento"). */
 export function Screen({ children }: { children: ReactNode }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -26,7 +28,11 @@ export function Screen({ children }: { children: ReactNode }) {
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={[s.screen, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 100 }]}
       keyboardShouldPersistTaps="handled">
-      {children}
+      {Children.map(
+        children,
+        (child, i) =>
+          child && <Animated.View entering={FadeInDown.delay(Math.min(i, 8) * 45).duration(320)}>{child}</Animated.View>
+      )}
     </ScrollView>
   );
 }
@@ -53,7 +59,7 @@ export function Card({
   const base = [s.card, { backgroundColor: bg ?? c.card }, style];
   if (!onPress) return <View style={base}>{children}</View>;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [base, pressed && s.pressed]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [base, pressed && s.pressedCard]}>
       {children}
     </Pressable>
   );
@@ -63,11 +69,13 @@ export function Button({
   title,
   onPress,
   kind = 'solid',
+  small,
   style,
 }: {
   title: string;
   onPress: () => void;
   kind?: 'solid' | 'outline' | 'danger';
+  small?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const c = useColors();
@@ -78,27 +86,30 @@ export function Button({
       accessibilityRole="button"
       style={({ pressed }) => [
         s.btn,
+        small && s.btnSmall,
         kind === 'solid' ? { backgroundColor: c.btn } : { borderWidth: 1.5, borderColor: fg },
         pressed && s.pressed,
         style,
       ]}>
-      <Text style={[s.btnText, { color: fg }]}>{title}</Text>
+      <Text style={[s.btnText, small && s.btnTextSmall, { color: fg }]}>{title}</Text>
     </Pressable>
   );
 }
 
-export function Field({ label, style, ...props }: TextInputProps & { label: string }) {
+export function Input({ style, ...props }: TextInputProps) {
   const c = useColors();
+  return (
+    <TextInput placeholderTextColor={c.dim} {...props} style={[s.input, { backgroundColor: c.bg, color: c.text }, style]} />
+  );
+}
+
+export function Field({ label, ...props }: TextInputProps & { label: string }) {
   return (
     <View style={s.field}>
       <T v="label" dim>
         {label}
       </T>
-      <TextInput
-        placeholderTextColor={c.dim}
-        {...props}
-        style={[s.input, { backgroundColor: c.bg, color: c.text }, style]}
-      />
+      <Input {...props} />
     </View>
   );
 }
@@ -132,15 +143,22 @@ export function Segmented<V extends string>({
   );
 }
 
+/** Barra de progreso que se rellena con animación. */
 export function Bar({ pct, color, track }: { pct: number; color: string; track: string }) {
+  const target = Math.min(100, Math.max(0, pct || 0));
+  const width = useSharedValue(0);
+  useEffect(() => {
+    width.set(withTiming(target, { duration: 700 }));
+  }, [target, width]);
+  const fill = useAnimatedStyle(() => ({ width: `${width.get()}%` }));
   return (
     <View style={[s.track, { backgroundColor: track }]}>
-      <View style={[s.fill, { backgroundColor: color, width: `${Math.min(100, Math.max(0, pct))}%` }]} />
+      <Animated.View style={[s.fill, { backgroundColor: color }, fill]} />
     </View>
   );
 }
 
-/** Hoja que sube desde abajo. Se cierra tocando fuera. */
+/** Hoja que sube desde abajo, con scroll si el contenido es largo. Se cierra tocando fuera. */
 export function Sheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: ReactNode }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -148,7 +166,15 @@ export function Sheet({ visible, onClose, children }: { visible: boolean; onClos
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.sheetWrap}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Cerrar" />
-        <View style={[s.sheet, { backgroundColor: c.card, paddingBottom: insets.bottom + 20 }]}>{children}</View>
+        <View style={[s.sheet, { backgroundColor: c.card }]}>
+          <View style={[s.grabber, { backgroundColor: c.line }]} />
+          <ScrollView
+            style={s.sheetScroll}
+            contentContainerStyle={[s.sheetBody, { paddingBottom: insets.bottom + 20 }]}
+            keyboardShouldPersistTaps="handled">
+            {children}
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -163,9 +189,12 @@ const s = StyleSheet.create({
   label: { fontFamily: Font.regular, fontSize: 12 },
   body: { fontSize: 15, lineHeight: 21 },
   card: { borderRadius: 26, padding: 16, gap: 10 },
-  pressed: { opacity: 0.75 },
+  pressed: { opacity: 0.7 },
+  pressedCard: { opacity: 0.85, transform: [{ scale: 0.985 }] },
   btn: { borderRadius: 999, paddingVertical: 13, paddingHorizontal: 18, alignItems: 'center' },
+  btnSmall: { paddingVertical: 7, paddingHorizontal: 12 },
   btnText: { fontFamily: Font.bold, fontSize: 14 },
+  btnTextSmall: { fontSize: 12 },
   field: { gap: 6 },
   input: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
   seg: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -174,5 +203,8 @@ const s = StyleSheet.create({
   track: { height: 6, borderRadius: 3, overflow: 'hidden' },
   fill: { height: '100%', borderRadius: 3 },
   sheetWrap: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 20, gap: 14, maxHeight: '90%' },
+  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%', paddingTop: 8 },
+  grabber: { width: 40, height: 5, borderRadius: 3, alignSelf: 'center' },
+  sheetScroll: { flexGrow: 0 },
+  sheetBody: { padding: 20, gap: 14 },
 });

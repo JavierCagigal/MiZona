@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import { Button, Card, Field, Screen, Segmented, Sheet, T } from '@/components/ui';
+import { FoodResults, FoodRow, useFoodSearch } from '@/components/food-search';
+import { RecipeSheet } from '@/components/recipe-sheet';
+import { Button, Card, Field, Input, Screen, Segmented, Sheet, T } from '@/components/ui';
 import { Font, useColors } from '@/constants/theme';
 import { addDays, dayKey, fromKey } from '@/lib/dates';
-import { searchOpenFoodFacts } from '@/lib/food-api';
 import { Entry, Food, MEALS, Meal, scale, sumEntries, uid } from '@/lib/macros';
-import { useStored } from '@/lib/store';
+import { load, save, useStored } from '@/lib/store';
 
 type Editing = { food: Food; entry?: Entry };
 
@@ -22,34 +23,32 @@ function dateLabel(key: string) {
   return fromKey(key).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+/** Copia registros con ids nuevos al final del día indicado (leyendo lo que ya haya guardado). */
+async function appendTo(day: string, entries: Entry[]) {
+  const current = await load<Entry[]>(`log:${day}`, []);
+  const copies = entries.map((e) => ({ ...e, id: uid() }));
+  save(`log:${day}`, [...current, ...copies]);
+  return [...current, ...copies];
+}
+
 export default function Comidas() {
   const c = useColors();
+  const today = dayKey();
   const [date, setDate] = useState(dayKey);
   const [entries, setEntries] = useStored<Entry[]>(`log:${date}`, []);
-  const [custom, setCustom] = useStored<Food[]>('foods', []);
+  const [own, setOwn] = useStored<Food[]>('foods', []);
   const [recent, setRecent] = useStored<Food[]>('recent', []);
+  const [favs, setFavs] = useStored<Food[]>('favs', []);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<{ q: string; foods: Food[]; offline: boolean } | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [sheet, setSheet] = useState<'custom' | 'recipe' | null>(null);
+  const [notice, setNotice] = useState('');
+  const search = useFoodSearch(query, own);
 
-  const q = query.trim();
-  useEffect(() => {
-    if (q.length < 2) return;
-    let alive = true;
-    const t = setTimeout(async () => {
-      const own = custom.filter((f) => f.name.toLowerCase().includes(q.toLowerCase()));
-      const remote = await searchOpenFoodFacts(q);
-      if (alive) setResults({ q, foods: [...own, ...(remote ?? [])], offline: remote === null });
-    }, 400);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [q, custom]);
-
-  const searching = q.length >= 2;
-  const fresh = results?.q === q ? results : null;
+  const flash = (text: string) => {
+    setNotice(text);
+    setTimeout(() => setNotice(''), 2500);
+  };
 
   const saveEntry = (food: Food, grams: number, meal: Meal, id?: string) => {
     const entry = { id: id ?? uid(), food, grams, meal };
@@ -59,7 +58,22 @@ export default function Comidas() {
     setQuery('');
   };
 
+  const toggleFav = (food: Food) =>
+    setFavs(favs.some((f) => f.id === food.id) ? favs.filter((f) => f.id !== food.id) : [food, ...favs]);
+
+  const copyPreviousDay = async () => {
+    const prev = await load<Entry[]>(`log:${addDays(date, -1)}`, []);
+    if (prev.length === 0) return flash('El día anterior está vacío.');
+    setEntries(await appendTo(date, prev));
+  };
+
+  const copyMealToToday = async (meal: Meal, items: Entry[]) => {
+    await appendTo(today, items);
+    flash(`${meal} copiada a hoy.`);
+  };
+
   const totals = sumEntries(entries);
+  const recentOnly = recent.filter((r) => !favs.some((f) => f.id === r.id));
 
   return (
     <Screen>
@@ -70,58 +84,49 @@ export default function Comidas() {
           <T v="label" style={s.dateText}>
             {dateLabel(date)}
           </T>
-          <Arrow
-            label="›"
-            a11y="Día siguiente"
-            onPress={() => setDate(addDays(date, 1))}
-            disabled={date >= dayKey()}
-          />
+          <Arrow label="›" a11y="Día siguiente" onPress={() => setDate(addDays(date, 1))} disabled={date >= today} />
         </View>
       </View>
 
       <Card bg={c.food}>
-        <Field
-          label="Buscar alimento"
+        <Input
           value={query}
           onChangeText={setQuery}
-          placeholder="ej. pechuga de pollo"
+          placeholder="Buscar alimento: arroz, pechuga, yogur…"
           autoCorrect={false}
           returnKeyType="search"
+          accessibilityLabel="Buscar alimento"
           style={{ backgroundColor: c.card }}
         />
-        {searching ? (
-          !fresh ? (
-            <T v="label" dim>
-              Buscando…
-            </T>
-          ) : fresh.foods.length === 0 ? (
-            <T v="label" dim>
-              {fresh.offline
-                ? 'Sin conexión para buscar. Puedes crear el alimento tú.'
-                : 'Sin resultados. Puedes crear el alimento tú.'}
-            </T>
-          ) : (
-            fresh.foods.map((f) => <FoodRow key={f.id} food={f} onPress={() => setEditing({ food: f })} />)
-          )
+        {search.active ? (
+          <FoodResults search={search} onPick={(food) => setEditing({ food })} />
         ) : (
-          recent.length > 0 && (
-            <>
-              <T v="label" dim>
-                Recientes
-              </T>
-              {recent.map((f) => (
-                <FoodRow key={f.id} food={f} onPress={() => setEditing({ food: f })} />
-              ))}
-            </>
-          )
+          <>
+            {favs.length > 0 && <FoodGroup title="★ Favoritos" foods={favs} onPick={(food) => setEditing({ food })} />}
+            {recentOnly.length > 0 && (
+              <FoodGroup title="Recientes" foods={recentOnly} onPick={(food) => setEditing({ food })} />
+            )}
+          </>
         )}
-        <Button title="+ Crear alimento propio" kind="outline" onPress={() => setCreating(true)} />
+        <View style={s.actions}>
+          <Button title="+ Alimento propio" kind="outline" small style={s.flex} onPress={() => setSheet('custom')} />
+          <Button title="+ Plato con ingredientes" kind="outline" small style={s.flex} onPress={() => setSheet('recipe')} />
+        </View>
       </Card>
 
-      {entries.length === 0 ? (
-        <T dim style={s.empty}>
-          Nada registrado este día.
+      {notice ? (
+        <T v="label" style={s.center}>
+          {notice}
         </T>
+      ) : null}
+
+      {entries.length === 0 ? (
+        <Card>
+          <T dim style={s.center}>
+            Nada registrado este día.
+          </T>
+          <Button title="Copiar el día anterior" kind="outline" onPress={copyPreviousDay} />
+        </Card>
       ) : (
         <>
           <T v="label" dim>
@@ -132,11 +137,19 @@ export default function Comidas() {
             if (items.length === 0) return null;
             return (
               <Card key={meal}>
-                <T v="h">{meal}</T>
+                <View style={s.header}>
+                  <T v="h">{meal}</T>
+                  {date !== today && (
+                    <Button title="Copiar a hoy" kind="outline" small onPress={() => copyMealToToday(meal, items)} />
+                  )}
+                </View>
                 {items.map((e) => (
                   <Pressable key={e.id} onPress={() => setEditing({ food: e.food, entry: e })} style={s.row}>
                     <T style={s.name} numberOfLines={2}>
-                      {e.food.name} <T v="label" dim>{e.grams} g</T>
+                      {e.food.name}{' '}
+                      <T v="label" dim>
+                        {e.grams} g
+                      </T>
                     </T>
                     <T v="label">{scale(e.food, e.grams).calories} kcal</T>
                   </Pressable>
@@ -150,6 +163,8 @@ export default function Comidas() {
       {editing && (
         <QuantitySheet
           editing={editing}
+          fav={favs.some((f) => f.id === editing.food.id)}
+          onToggleFav={() => toggleFav(editing.food)}
           onClose={() => setEditing(null)}
           onSave={(grams, meal) => saveEntry(editing.food, grams, meal, editing.entry?.id)}
           onDelete={() => {
@@ -158,12 +173,23 @@ export default function Comidas() {
           }}
         />
       )}
-      {creating && (
+      {sheet === 'custom' && (
         <CustomFoodSheet
-          onClose={() => setCreating(false)}
+          onClose={() => setSheet(null)}
           onSave={(food) => {
-            setCustom([food, ...custom]);
-            setCreating(false);
+            setOwn([food, ...own]);
+            setSheet(null);
+            setEditing({ food });
+          }}
+        />
+      )}
+      {sheet === 'recipe' && (
+        <RecipeSheet
+          own={own}
+          onClose={() => setSheet(null)}
+          onSave={(food) => {
+            setOwn([food, ...own]);
+            setSheet(null);
             setEditing({ food });
           }}
         />
@@ -172,28 +198,22 @@ export default function Comidas() {
   );
 }
 
-function FoodRow({ food, onPress }: { food: Food; onPress: () => void }) {
+function FoodGroup({ title, foods, onPick }: { title: string; foods: Food[]; onPick: (f: Food) => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.row, pressed && { opacity: 0.6 }]}>
-      <T style={s.name} numberOfLines={2}>
-        {food.name}
-        {food.source === 'custom' && <T v="label" dim>{'  '}propio</T>}
-      </T>
+    <View>
       <T v="label" dim>
-        {food.kcal100} kcal/100g
+        {title}
       </T>
-    </Pressable>
+      {foods.map((f) => (
+        <FoodRow key={f.id} food={f} onPress={() => onPick(f)} />
+      ))}
+    </View>
   );
 }
 
 function Arrow({ label, a11y, onPress, disabled }: { label: string; a11y: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityLabel={a11y}
-      hitSlop={10}
-      style={{ opacity: disabled ? 0.25 : 1 }}>
+    <Pressable onPress={onPress} disabled={disabled} accessibilityLabel={a11y} hitSlop={10} style={{ opacity: disabled ? 0.25 : 1 }}>
       <T v="h">{label}</T>
     </Pressable>
   );
@@ -201,11 +221,15 @@ function Arrow({ label, a11y, onPress, disabled }: { label: string; a11y: string
 
 function QuantitySheet({
   editing,
+  fav,
+  onToggleFav,
   onClose,
   onSave,
   onDelete,
 }: {
   editing: Editing;
+  fav: boolean;
+  onToggleFav: () => void;
   onClose: () => void;
   onSave: (grams: number, meal: Meal) => void;
   onDelete: () => void;
@@ -217,31 +241,41 @@ function QuantitySheet({
 
   return (
     <Sheet visible onClose={onClose}>
-      <T v="h">{editing.food.name}</T>
+      <View style={s.header}>
+        <T v="h" style={s.flex}>
+          {editing.food.name}
+        </T>
+        <Pressable onPress={onToggleFav} hitSlop={10} accessibilityLabel={fav ? 'Quitar de favoritos' : 'Añadir a favoritos'}>
+          <T v="h">{fav ? '★' : '☆'}</T>
+        </Pressable>
+      </View>
       <Field label="Cantidad (g)" value={grams} onChangeText={setGrams} keyboardType="decimal-pad" selectTextOnFocus />
       <Segmented options={MEALS.map((x) => ({ id: x, label: x }))} value={meal} onChange={setMeal} />
       <T v="label" dim>
         {m.calories} kcal · {m.carbs}g carbos · {m.fat}g grasa · {m.protein}g prot
       </T>
-      <Button title={editing.entry ? 'Guardar cambios' : 'Añadir'} onPress={() => {
+      <Button
+        title={editing.entry ? 'Guardar cambios' : 'Añadir'}
+        onPress={() => {
           if (g > 0) onSave(g, meal);
-        }} />
+        }}
+      />
       {editing.entry && <Button title="Eliminar" kind="danger" onPress={onDelete} />}
     </Sheet>
   );
 }
 
 function CustomFoodSheet({ onClose, onSave }: { onClose: () => void; onSave: (food: Food) => void }) {
+  const c = useColors();
   const [form, setForm] = useState({ name: '', kcal: '', protein: '', carbs: '', fat: '' });
   const [error, setError] = useState('');
-  const c = useColors();
   const num = (v: string) => parseFloat(v.replace(',', '.')) || 0;
   const field = (key: keyof typeof form) => ({
     value: form[key],
     onChangeText: (v: string) => setForm({ ...form, [key]: v }),
   });
 
-  const save = () => {
+  const submit = () => {
     if (!form.name.trim() || !num(form.kcal)) {
       setError('Pon al menos el nombre y las calorías.');
       return;
@@ -280,18 +314,20 @@ function CustomFoodSheet({ onClose, onSave }: { onClose: () => void; onSave: (fo
           {error}
         </T>
       ) : null}
-      <Button title="Guardar y añadir" onPress={save} />
+      <Button title="Guardar y añadir" onPress={submit} />
     </Sheet>
   );
 }
 
 const s = StyleSheet.create({
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   dateNav: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   dateText: { fontFamily: Font.bold, minWidth: 70, textAlign: 'center' },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 4 },
   name: { flex: 1, fontSize: 14 },
-  empty: { textAlign: 'center', paddingVertical: 24 },
+  center: { textAlign: 'center' },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  flex: { flex: 1 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   cell: { flexGrow: 1, flexBasis: '45%' },
 });
