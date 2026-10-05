@@ -24,7 +24,7 @@ npx expo start
 - **En tu iPhone:** instala **Expo Go** desde la App Store y escanea el QR que
   aparece en la terminal (el móvil y el Mac tienen que estar en la misma wifi).
 - **En el navegador:** pulsa `w` en la terminal.
-- **Versión web publicada:** https://javiercagigal.github.io/AppNutri/ (se actualiza sola
+- **Versión web publicada:** https://javiercagigal.github.io/MiZona/ (se actualiza sola
   con cada push a `main`; en el iPhone, Safari → compartir → "Añadir a pantalla de inicio").
 
 ## Comprobaciones

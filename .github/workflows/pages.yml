@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npx expo export --platform web
-      # Pages no sabe de rutas de la app: si se recarga /AppNutri/comidas, sirve 404.html, que es la propia app.
+      # Pages no sabe de rutas de la app: si se recarga /MiZona/comidas, sirve 404.html, que es la propia app.
       - run: cp dist/index.html dist/404.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

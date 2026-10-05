@@ -1,0 +1,15 @@
+{
+  "name": "MiZona",
+  "short_name": "MiZona",
+  "description": "Tu comida, tu deporte y tu progreso, en un mismo sitio.",
+  "start_url": "/MiZona/",
+  "scope": "/MiZona/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E9E7E2",
+  "theme_color": "#E9E7E2",
+  "icons": [
+    { "src": "/MiZona/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/MiZona/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
