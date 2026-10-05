@@ -4,6 +4,7 @@ import { addDays, isoDayIndex, lastDays, streak } from '../src/lib/dates.ts';
 import { BASIC_FOODS, searchLocal } from '../src/lib/basic-foods.ts';
 import { calcGoals, dailyGoals, recipePer100, scale, sumEntries, waterGoal } from '../src/lib/macros.ts';
 import { pace, records } from '../src/lib/training.ts';
+import { niceTicks, shortNumber } from '../src/lib/charts.ts';
 
 const p = { weight: 75, height: 178, age: 28, sex: 'hombre', activity: 'moderado', goalType: 'mantener', overrides: null };
 const g = calcGoals(p);
@@ -62,5 +63,14 @@ const r = records([
 assert.deepEqual(r.lifts, [{ name: 'Sentadilla', kg: 100, reps: 8, date: '2026-10-01' }]);
 assert.deepEqual(r.distance.find((d) => d.sport === 'carrera'), { sport: 'carrera', km: 21.1, date: '2026-10-04' });
 assert.equal(r.distance.length, 2);
+
+// Ejes de las gráficas
+assert.deepEqual(niceTicks(0, 2587), [0, 1000, 2000, 3000]);
+assert.deepEqual(niceTicks(70.4, 72.9, 3), [70, 71, 72, 73]);
+assert.deepEqual(niceTicks(72, 72, 3), [71, 72, 73]);
+assert.deepEqual(niceTicks(0, 3400), [0, 1000, 2000, 3000, 4000]);
+assert.equal(shortNumber(2500), '2,5k');
+assert.equal(shortNumber(3000), '3k');
+assert.equal(shortNumber(72.5), '72,5');
 
 console.log('ok');

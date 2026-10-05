@@ -18,6 +18,10 @@ const light = {
   waterInk: '#4A8FD6',
   profile: '#DDD6F0',
   danger: '#C1573E',
+  // Gráficas (validadas: contraste >= 3:1 sobre la tarjeta y distinguibles con daltonismo)
+  chartWeight: '#9E7414',
+  chartOk: '#4A8FD6',
+  chartOver: '#C1573E',
 };
 
 const dark: typeof light = {
@@ -37,6 +41,9 @@ const dark: typeof light = {
   waterInk: '#6FAEEA',
   profile: '#2A253A',
   danger: '#E07A5F',
+  chartWeight: '#B88A24',
+  chartOk: '#4F93D6',
+  chartOver: '#D4643F',
 };
 
 export type Palette = typeof light;

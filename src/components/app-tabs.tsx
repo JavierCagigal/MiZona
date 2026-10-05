@@ -19,6 +19,10 @@ export default function AppTabs() {
         <NativeTabs.Trigger.Label>Actividad</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="figure.run" />
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="progreso">
+        <NativeTabs.Trigger.Label>Progreso</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="chart.line.uptrend.xyaxis" />
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="ajustes">
         <NativeTabs.Trigger.Label>Perfil</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="person.crop.circle" />

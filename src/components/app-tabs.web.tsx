@@ -7,6 +7,7 @@ const TABS = [
   { name: 'index', href: '/', label: 'Hoy' },
   { name: 'comidas', href: '/comidas', label: 'Comidas' },
   { name: 'actividad', href: '/actividad', label: 'Actividad' },
+  { name: 'progreso', href: '/progreso', label: 'Progreso' },
   { name: 'ajustes', href: '/ajustes', label: 'Perfil' },
 ] as const;
 
@@ -46,8 +47,8 @@ function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
 }
 
 const s = StyleSheet.create({
-  wrap: { position: 'absolute', bottom: 0, width: '100%', padding: 14, alignItems: 'center' },
-  bar: { flexDirection: 'row', gap: 4, padding: 5, borderRadius: 999, borderWidth: 1, width: '100%', maxWidth: 420 },
+  wrap: { position: 'absolute', bottom: 0, width: '100%', padding: 10, alignItems: 'center' },
+  bar: { flexDirection: 'row', gap: 2, padding: 4, borderRadius: 999, borderWidth: 1, width: '100%', maxWidth: 460 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 999 },
-  label: { fontFamily: Font.bold, fontSize: 13 },
+  label: { fontFamily: Font.bold, fontSize: 11 },
 });
